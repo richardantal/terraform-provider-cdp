@@ -13,8 +13,10 @@ package opdb
 import (
 	"context"
 	"fmt"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
 	"github.com/cloudera/terraform-provider-cdp/cdp-sdk-go/cdp"
@@ -138,6 +140,58 @@ func getCommonDatabaseDetails(data *databaseResourceModel, databaseDetails *opdb
 	data.StorageLocation = types.StringValue(databaseDetails.StorageLocation)
 
 	data.NumEdgeNodes = types.Int64Value(int64(databaseDetails.DbEdgeNodeCount))
+
+	if databaseDetails.AutoScalingConfig != nil {
+		data.AutoScalingParameters = createAutoScalingConfig(databaseDetails.AutoScalingConfig)
+	}
+
+	if len(databaseDetails.StorageDetailsForWorkers) >= 1 {
+		data.AttachedStorageForWorkers = createStorageDetailsForWorkers(databaseDetails.StorageDetailsForWorkers[0])
+	}
+}
+
+var autoScalingParametersType = types.ObjectType{
+	AttrTypes: map[string]attr.Type{
+		"targeted_value_for_metric": types.Int64Type,
+		"max_workers_for_database":  types.Int64Type,
+		"max_workers_per_batch":     types.Int64Type,
+		"min_workers_for_database":  types.Int64Type,
+		"evaluation_period":         types.Int64Type,
+		"minimum_block_cache_gb":    types.Int64Type,
+
+		"max_cpu_utilization":            types.Int64Type,
+		"max_compute_nodes_for_database": types.Int64Type,
+		"min_compute_nodes_for_database": types.Int64Type,
+		// "max_hdfs_usage_percentage":      types.Int64Type,
+		// "max_regions_per_region_server":  types.Int64Type,
+	},
+}
+
+func createAutoScalingConfig(autoScalingConfig *opdbmodels.AutoScalingConfig) types.Object {
+	autoScalingConfigObj, _ := basetypes.NewObjectValue(autoScalingParametersType.AttrTypes,
+		map[string]attr.Value{
+			"targeted_value_for_metric": types.Int64Value(int64(autoScalingConfig.TargetedValueForMetric)),
+			"max_workers_for_database":  types.Int64Value(int64(autoScalingConfig.MaxWorkersForDatabase)),
+			"max_workers_per_batch":     types.Int64Value(int64(autoScalingConfig.MaxWorkersPerBatch)),
+			"min_workers_for_database":  types.Int64Value(int64(autoScalingConfig.MinWorkersForDatabase)),
+			"evaluation_period":         types.Int64Value(int64(autoScalingConfig.EvaluationPeriod)),
+			"minimum_block_cache_gb":    types.Int64Value(int64(autoScalingConfig.MinimumBlockCacheGb)),
+
+			"max_cpu_utilization":            types.Int64Value(int64(autoScalingConfig.MaxCPUUtilization)),
+			"max_compute_nodes_for_database": types.Int64Value(int64(*autoScalingConfig.MaxComputeNodesForDatabase)),
+			"min_compute_nodes_for_database": types.Int64Value(int64(*autoScalingConfig.MinComputeNodesForDatabase)),
+			// "max_hdfs_usage_percentage":      types.Int64Null(), // not available in AutoScalingConfig
+			// "max_regions_per_region_server":  types.Int64Null(), // not available in AutoScalingConfig
+		})
+	return autoScalingConfigObj
+}
+
+func createStorageDetailsForWorkers(storageDetailsForWorker *opdbmodels.StorageDetailsForWorker) *AttachedStorageForWorkersStruct {
+	return &AttachedStorageForWorkersStruct{
+		VolumeCount: types.Int64Value(int64(storageDetailsForWorker.VolumeCount)),
+		VolumeSize:  types.Int64Value(int64(storageDetailsForWorker.VolumeSize)),
+		VolumeType:  types.StringValue(string(storageDetailsForWorker.VolumeType)),
+	}
 }
 
 func (r *databaseResource) Update(ctx context.Context, _ resource.UpdateRequest, _ *resource.UpdateResponse) {
